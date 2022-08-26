@@ -8,19 +8,19 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build Xiaomi R3 OpenWrt
+name: Build UFI003 Openstick OpenWrt
 
 on:
   repository_dispatch:
   workflow_dispatch:
 #  schedule:
-#    - cron: 0 8 * * *
+#    - cron: 0 22 * * *
 
 env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: openwrt-18.06
-  FEEDS_CONF: feeds/feeds.conf.default
-  CONFIG_FILE: config/mi_r3.config
+  REPO_URL: https://github.com/HandsomeMod/HandsomeMod
+  REPO_BRANCH: master
+  FEEDS_CONF: feeds/ufi003_feeds.conf.default
+  CONFIG_FILE: config/ufi003.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   UPLOAD_FIRMWARE: true
@@ -47,19 +47,13 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
-
+        
     - name: Clone source code
       working-directory: /workdir
       run: |
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-    - name: Apply patches
-      run: |
-        mv patches/add-mir3-pbboot-image.patch openwrt
-        cd openwrt
-        patch -p0 < "add-mir3-pbboot-image.patch"
 
     - name: Load custom feeds
       run: |
@@ -101,7 +95,7 @@ jobs:
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-        
+
     - name: Check space usage
       if: (!cancelled())
       run: df -hT
