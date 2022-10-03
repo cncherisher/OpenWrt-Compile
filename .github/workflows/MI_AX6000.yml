@@ -13,8 +13,8 @@ name: Build Redmi AX6000 OpenWrt
 on:
   repository_dispatch:
   workflow_dispatch:
-#  schedule:
-#    - cron: 0 22 * * *
+  schedule:
+    - cron: 0 12 */3 * *
 
 env:
   REPO_URL: https://github.com/x-wrt/x-wrt.git
