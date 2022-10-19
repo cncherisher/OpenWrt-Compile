@@ -17,7 +17,7 @@ on:
 #    - cron: 0 8 * * *
 
 env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
   REPO_BRANCH: openwrt-18.06
   FEEDS_CONF: feeds/r3_feeds.conf.default
   CONFIG_FILE: config/mi_r3.config
@@ -97,7 +97,7 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j2 || make -j2 V=s
-        echo "::set-output name=status::success"
+        echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
@@ -113,7 +113,7 @@ jobs:
         cd openwrt/bin/targets/*/*
         rm -rf packages *.buildinfo *.manifest profiles.json sha256sums 
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "::set-output name=status::success"
+        echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
       uses: actions/upload-artifact@main
@@ -126,9 +126,9 @@ jobs:
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
-        echo "::set-output name=release_tag::$(date +"%Y.%m.%d-%H%M")"
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         touch release.txt
-        echo "::set-output name=status::success"
+        echo "status=success" >> $GITHUB_OUTPUT
     
     - name: Upload firmware to release
       uses: softprops/action-gh-release@v1
@@ -143,14 +143,14 @@ jobs:
     - name: Delete workflow runs
       uses: GitRML/delete-workflow-runs@main
       with:
-        retain_days: 1
+        retain_days: 7
         keep_minimum_runs: 3
 
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@v0.2.0
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
-        keep_latest: 7
+        keep_latest: 14
         delete_tags: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
