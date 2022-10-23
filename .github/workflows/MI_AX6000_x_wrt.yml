@@ -8,19 +8,19 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build Redmi AX6000 OpenWrt
+name: Build Redmi AX6000 X-WRT
 
 on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: 0 12 */3 * *
+    - cron: 0 12 */5 * *
 
 env:
   REPO_URL: https://github.com/x-wrt/x-wrt.git
   REPO_BRANCH: master
   FEEDS_CONF: feeds/ax6000_feeds.conf.default
-  CONFIG_FILE: config/mi_ax6000.config
+  CONFIG_FILE: config/mi_ax6000_x-wrt.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
   UPLOAD_FIRMWARE: true
