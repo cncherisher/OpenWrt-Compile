@@ -1,0 +1,646 @@
+From a7e0fc5348c2f5bd1e13defa844315ab6548308b Mon Sep 17 00:00:00 2001
+From: Chukun Pan <amadeus@jmu.edu.cn>
+Date: Sun, 18 Sep 2022 23:16:18 +0800
+Subject: [PATCH 1/3] mediatek: add Xiaomi Redmi Router AX6000 support
+
+Hardware specification:
+  SoC: MediaTek MT7986A 4x A53
+  Flash: ESMT F50L1G41LB 128 MB
+  RAM: K4A4G165WF-BCWE 512 MB
+  Ethernet: 4x 10/100/1000 Mbps
+  WiFi1: MT7976GN 2.4GHz ax 4x4
+  WiFi2: MT7976AN 5GHz ax 4x4
+  Button: Mesh, Reset
+
+Flash instructions:
+  1. Gain ssh and serial port access, see the link below:
+     https://openwrt.org/toh/xiaomi/redmi_ax6000#installation
+  2. Use ssh or serial port to log in to the router, and
+     execute the following command:
+     nvram set boot_wait=on
+     nvram set flag_boot_rootfs=0
+     nvram set flag_boot_success=1
+     nvram set flag_last_success=1
+     nvram set flag_try_sys1_failed=8
+     nvram set flag_try_sys2_failed=8
+     nvram commit
+  3. Set a static ip on the ethernet interface of your computer
+     (e.g. default: ip 192.168.31.100, gateway 192.168.31.1)
+  4. Download the initramfs image, rename it to initramfs.bin,
+     and host it with the tftp server.
+  5. Interrupt U-Boot and run these commands:
+     setenv mtdparts nmbm0:1024k(bl2),256k(Nvram),256k(Bdata),2048k(factory),2048k(fip),256k(crash),256k(crash_log),112640k(ubi)
+     saveenv
+     tftpboot initramfs.bin
+     bootm
+  6. After openwrt boots up, use scp or luci web
+     to upload sysupgrade.bin to upgrade.
+
+Revert to stock firmware:
+  Restore mtdparts back to default, then use the
+  vendor's recovery tool (Windows only).
+
+Signed-off-by: Chukun Pan <amadeus@jmu.edu.cn>
+---
+ .../uboot-envtools/files/mediatek_filogic     |   6 +-
+ .../mt7986a-xiaomi-redmi-router-ax6000.dts    | 255 ++++++++++++++++++
+ .../filogic/base-files/etc/board.d/02_network |  23 ++
+ target/linux/mediatek/image/filogic.mk        |  14 +
+ 4 files changed, 297 insertions(+), 1 deletion(-)
+ create mode 100644 target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts
+
+diff --git a/package/boot/uboot-envtools/files/mediatek_filogic b/package/boot/uboot-envtools/files/mediatek_filogic
+index a29ec7d0ee..fe986b2e4e 100644
+--- a/package/boot/uboot-envtools/files/mediatek_filogic
++++ b/package/boot/uboot-envtools/files/mediatek_filogic
+@@ -34,9 +34,13 @@ bananapi,bpi-r3)
+ 		;;
+ 	esac
+ 	;;
++xiaomi,redmi-router-ax6000)
++	ubootenv_add_uci_config "/dev/mtd1" "0x0" "0x10000" "0x20000"
++	ubootenv_add_uci_sys_config "/dev/mtd2" "0x0" "0x10000" "0x20000"
++	;;
+ esac
+ 
+ config_load ubootenv
+-config_foreach ubootenv_add_app_config ubootenv
++config_foreach ubootenv_add_app_config
+ 
+ exit 0
+diff --git a/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts b/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts
+new file mode 100644
+index 0000000000..6eb669de00
+--- /dev/null
++++ b/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts
+@@ -0,0 +1,255 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++
++/dts-v1/;
++#include <dt-bindings/input/input.h>
++#include <dt-bindings/gpio/gpio.h>
++
++#include "mt7986a.dtsi"
++
++/ {
++	model = "Xiaomi Redmi Router AX6000";
++	compatible = "xiaomi,redmi-router-ax6000", "mediatek,mt7986a";
++
++	aliases {
++		serial0 = &uart0;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	memory {
++		reg = <0 0x40000000 0 0x20000000>;
++	};
++
++	keys {
++		compatible = "gpio-keys";
++
++		reset {
++			label = "reset";
++			gpios = <&pio 9 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++
++		mesh {
++			label = "mesh";
++			gpios = <&pio 10 GPIO_ACTIVE_LOW>;
++			linux,code = <BTN_9>;
++			linux,input-type = <EV_SW>;
++		};
++	};
++};
++
++&eth {
++	status = "okay";
++
++	gmac0: mac@0 {
++		compatible = "mediatek,eth-mac";
++		reg = <0>;
++		phy-mode = "2500base-x";
++
++		nvmem-cells = <&macaddr_factory_4>;
++		nvmem-cell-names = "mac-address";
++		mac-address-increment = <(-1)>;
++
++		fixed-link {
++			speed = <2500>;
++			full-duplex;
++			pause;
++		};
++	};
++
++	mdio: mdio-bus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++	};
++};
++
++&mdio {
++	switch: switch@0 {
++		compatible = "mediatek,mt7531";
++		reg = <31>;
++		reset-gpios = <&pio 5 GPIO_ACTIVE_HIGH>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++		interrupt-parent = <&pio>;
++		interrupts = <66 IRQ_TYPE_LEVEL_HIGH>;
++	};
++};
++
++&pio {
++	spi_flash_pins: spi-flash-pins-33-to-38 {
++		mux {
++			function = "spi";
++			groups = "spi0", "spi0_wp_hold";
++		};
++		conf-pu {
++			pins = "SPI2_CS", "SPI2_HOLD", "SPI2_WP";
++			drive-strength = <8>;
++			mediatek,pull-up-adv = <0>; /* bias-disable */
++		};
++		conf-pd {
++			pins = "SPI2_CLK", "SPI2_MOSI", "SPI2_MISO";
++			drive-strength = <8>;
++			mediatek,pull-down-adv = <0>; /* bias-disable */
++		};
++	};
++
++	wf_2g_5g_pins: wf_2g_5g-pins {
++		mux {
++			function = "wifi";
++			groups = "wf_2g", "wf_5g";
++		};
++		conf {
++			pins = "WF0_HB1", "WF0_HB2", "WF0_HB3", "WF0_HB4",
++			       "WF0_HB0", "WF0_HB0_B", "WF0_HB5", "WF0_HB6",
++			       "WF0_HB7", "WF0_HB8", "WF0_HB9", "WF0_HB10",
++			       "WF0_TOP_CLK", "WF0_TOP_DATA", "WF1_HB1",
++			       "WF1_HB2", "WF1_HB3", "WF1_HB4", "WF1_HB0",
++			       "WF1_HB5", "WF1_HB6", "WF1_HB7", "WF1_HB8",
++			       "WF1_TOP_CLK", "WF1_TOP_DATA";
++			drive-strength = <4>;
++		};
++	};
++};
++
++&spi0 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&spi_flash_pins>;
++	cs-gpios = <0>, <0>;
++	status = "okay";
++
++	flash@0 {
++		compatible = "spi-nand";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		reg = <0>;
++
++		mediatek,nmbm;
++		mediatek,bmt-max-ratio = <1>;
++		mediatek,bmt-max-reserved-blocks = <64>;
++
++		spi-max-frequency = <20000000>;
++		spi-tx-buswidth = <4>;
++		spi-rx-buswidth = <4>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "BL2";
++				reg = <0x0 0x100000>;
++				read-only;
++			};
++
++			partition@100000 {
++				label = "Nvram";
++				reg = <0x100000 0x40000>;
++			};
++
++			partition@140000 {
++				label = "Bdata";
++				reg = <0x140000 0x40000>;
++			};
++
++			factory: partition@180000 {
++				label = "Factory";
++				reg = <0x180000 0x200000>;
++				read-only;
++
++				compatible = "nvmem-cells";
++				#address-cells = <1>;
++				#size-cells = <1>;
++
++				macaddr_factory_4: macaddr@4 {
++					reg = <0x4 0x6>;
++				};
++			};
++
++			partition@380000 {
++				label = "FIP";
++				reg = <0x380000 0x200000>;
++				read-only;
++			};
++
++			partition@580000 {
++				label = "crash";
++				reg = <0x580000 0x40000>;
++				read-only;
++			};
++
++			partition@5c0000 {
++				label = "crash_log";
++				reg = <0x5c0000 0x40000>;
++				read-only;
++			};
++
++			/* ubi partition is the result of squashing
++			 * consecutive stock partitions:
++			 * - ubi
++			 * - ubi1
++			 * - overlay
++			 */
++			partition@600000 {
++				label = "ubi";
++				reg = <0x600000 0x6e00000>;
++			};
++
++			/* last 12 MiB is reserved for NMBM bad block table */
++		};
++	};
++};
++
++&switch {
++	ports {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		port@1 {
++			reg = <1>;
++			label = "lan1";
++		};
++
++		port@2 {
++			reg = <2>;
++			label = "lan2";
++		};
++
++		port@3 {
++			reg = <3>;
++			label = "lan3";
++		};
++
++		port@4 {
++			reg = <4>;
++			label = "wan";
++		};
++
++		port@6 {
++			reg = <6>;
++			label = "cpu";
++			ethernet = <&gmac0>;
++			phy-mode = "2500base-x";
++
++			fixed-link {
++				speed = <2500>;
++				full-duplex;
++				pause;
++			};
++		};
++	};
++};
++
++&wmac {
++	status = "okay";
++	pinctrl-names = "default";
++	pinctrl-0 = <&wf_2g_5g_pins>;
++
++	mediatek,mtd-eeprom = <&factory 0x0>;
++};
++
++&uart0 {
++	status = "okay";
++};
+diff --git a/target/linux/mediatek/filogic/base-files/etc/board.d/02_network b/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+index f7dc7a01e0..1f3dc57d7d 100644
+--- a/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
++++ b/target/linux/mediatek/filogic/base-files/etc/board.d/02_network
+@@ -16,15 +16,38 @@ mediatek_setup_interfaces()
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4 sfp2" "eth1 wan"
+ 		ucidef_set_interface_macaddr "wan" "$(macaddr_add $(cat /sys/class/net/eth0/address) 1)"
+ 		;;
++	xiaomi,redmi-router-ax6000)
++		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3" wan
++		;;
+ 	*)
+ 		ucidef_set_interfaces_lan_wan "lan1 lan2 lan3 lan4" wan
+ 		;;
+ 	esac
+ }
+ 
++mediatek_setup_macs()
++{
++	local board="$1"
++	local lan_mac=""
++	local wan_mac=""
++	local label_mac=""
++
++	case $board in
++	xiaomi,redmi-router-ax6000)
++		wan_mac=$(mtd_get_mac_ascii Bdata ethaddr_wan)
++		label_mac=$wan_mac
++		;;
++	esac
++
++	[ -n "$lan_mac" ] && ucidef_set_interface_macaddr "lan" $lan_mac
++	[ -n "$wan_mac" ] && ucidef_set_interface_macaddr "wan" $wan_mac
++	[ -n "$label_mac" ] && ucidef_set_label_macaddr $label_mac
++}
++
+ board_config_update
+ board=$(board_name)
+ mediatek_setup_interfaces $board
++mediatek_setup_macs $board
+ board_config_flush
+ 
+ exit 0
+diff --git a/target/linux/mediatek/image/filogic.mk b/target/linux/mediatek/image/filogic.mk
+index df890a4152..f7fc9e30d1 100644
+--- a/target/linux/mediatek/image/filogic.mk
++++ b/target/linux/mediatek/image/filogic.mk
+@@ -125,3 +125,17 @@ define Device/mediatek_mt7986b-rfb
+   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+ endef
+ TARGET_DEVICES += mediatek_mt7986b-rfb
++
++define Device/xiaomi_redmi-router-ax6000
++  DEVICE_VENDOR := Xiaomi
++  DEVICE_MODEL := Redmi Router AX6000
++  DEVICE_DTS := mt7986a-xiaomi-redmi-router-ax6000
++  DEVICE_DTS_DIR := ../dts
++  KERNEL_LOADADDR := 0x48000000
++  UBINIZE_OPTS := -E 5
++  BLOCKSIZE := 128k
++  PAGESIZE := 2048
++  KERNEL_IN_UBI := 1
++  IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
++endef
++TARGET_DEVICES += xiaomi_redmi-router-ax6000
+-- 
+2.17.1
+
+
+From a05422f7623ceb14c5de3d8992af62ccbe00ef89 Mon Sep 17 00:00:00 2001
+From: Chen Minqiang <ptpt52@gmail.com>
+Date: Tue, 13 Sep 2022 13:46:20 +0800
+Subject: [PATCH 2/3] mediatek: gen initramfs-factory.ubi for Xiaomi Redmi
+ Router AX6000
+
+---
+ target/linux/mediatek/image/filogic.mk | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/target/linux/mediatek/image/filogic.mk b/target/linux/mediatek/image/filogic.mk
+index f7fc9e30d1..9143f482bd 100644
+--- a/target/linux/mediatek/image/filogic.mk
++++ b/target/linux/mediatek/image/filogic.mk
+@@ -38,6 +38,20 @@ define Build/mt7986-gpt
+ 	rm $@.tmp
+ endef
+ 
++define Build/gen-ubi-initramfs
++	sh $(TOPDIR)/scripts/ubinize-image.sh \
++		$(if $(UBOOTENV_IN_UBI),--uboot-env) \
++		--kernel $(KDIR)/tmp/$(KERNEL_INITRAMFS_IMAGE) \
++		$(foreach part,$(UBINIZE_PARTS),--part $(part)) \
++		"$(1).tmp" \
++		-p $(BLOCKSIZE:%k=%KiB) -m $(PAGESIZE) \
++		$(if $(SUBPAGESIZE),-s $(SUBPAGESIZE)) \
++		$(if $(VID_HDR_OFFSET),-O $(VID_HDR_OFFSET)) \
++		$(UBINIZE_OPTS) && \
++	cat "$(1).tmp" > "$(1)" && rm "$(1).tmp" && \
++	$(CP) "$(1)" $(BIN_DIR)/
++endef
++
+ define Device/bananapi_bpi-r3
+   DEVICE_VENDOR := Bananapi
+   DEVICE_MODEL := BPi-R3
+@@ -136,6 +150,9 @@ define Device/xiaomi_redmi-router-ax6000
+   BLOCKSIZE := 128k
+   PAGESIZE := 2048
+   KERNEL_IN_UBI := 1
++  KERNEL_INITRAMFS := kernel-bin | lzma | \
++	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | \
++	gen-ubi-initramfs $(KDIR)/tmp/$$(KERNEL_INITRAMFS_PREFIX)-factory.ubi
+   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
+ endef
+ TARGET_DEVICES += xiaomi_redmi-router-ax6000
+-- 
+2.17.1
+
+
+From 88be57a01117737b6f5cca32989de7987c813519 Mon Sep 17 00:00:00 2001
+From: Chen Minqiang <ptpt52@gmail.com>
+Date: Wed, 21 Sep 2022 15:03:20 +0800
+Subject: [PATCH 3/3] mediatek: change layout for Xiaomi Redmi Router AX6000
+
+---
+ .../mt7986a-xiaomi-redmi-router-ax6000.dts    |   9 +-
+ .../base-files/lib/upgrade/platform.sh        | 127 ++++++++++++++++++
+ target/linux/mediatek/image/filogic.mk        |   1 -
+ 3 files changed, 134 insertions(+), 3 deletions(-)
+
+diff --git a/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts b/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts
+index 6eb669de00..16e309a599 100644
+--- a/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts
++++ b/target/linux/mediatek/dts/mt7986a-xiaomi-redmi-router-ax6000.dts
+@@ -186,15 +186,20 @@
+ 				read-only;
+ 			};
+ 
++			partition@600000 {
++				label = "ubi_kernel";
++				reg = <0x600000 0x1e00000>;
++			};
++
+ 			/* ubi partition is the result of squashing
+ 			 * consecutive stock partitions:
+ 			 * - ubi
+ 			 * - ubi1
+ 			 * - overlay
+ 			 */
+-			partition@600000 {
++			partition@2400000 {
+ 				label = "ubi";
+-				reg = <0x600000 0x6e00000>;
++				reg = <0x2400000 0x5000000>;
+ 			};
+ 
+ 			/* last 12 MiB is reserved for NMBM bad block table */
+diff --git a/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh b/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
+index a9327ae282..31e1d64317 100755
+--- a/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
++++ b/target/linux/mediatek/filogic/base-files/lib/upgrade/platform.sh
+@@ -1,5 +1,129 @@
+ REQUIRE_IMAGE_METADATA=1
+ 
++redmi_ax6000_nand_upgrade_tar()
++{
++	CI_UBIPART=ubi
++	local tar_file="$1"
++	local board_dir="$(tar tf "$tar_file" | grep -m 1 '^sysupgrade-.*/$')"
++	board_dir="${board_dir%/}"
++
++	local kernel_length=$( (tar xf "$tar_file" "$board_dir/kernel" -O | wc -c) 2> /dev/null)
++	[ "$kernel_length" = 0 ] && kernel_length=
++
++	local rootfs_length=$( (tar xf "$tar_file" "$board_dir/root" -O | wc -c) 2> /dev/null)
++	[ "$rootfs_length" = 0 ] && rootfs_length=
++
++	local rootfs_type
++	[ "$rootfs_length" ] && rootfs_type="$(identify_tar "$tar_file" "$board_dir/root")"
++
++	[ -n "$rootfs_length" -o -n "$kernel_length" ] || return 1
++
++	local mtdnum="$( find_mtd_index "$CI_UBIPART" )"
++	if [ ! "$mtdnum" ]; then
++		echo "cannot find ubi mtd partition ubi"
++		return 1
++	fi
++	local ubidev="$( nand_find_ubi "$CI_UBIPART" )"
++	#cleanup old data volume if exist
++	if [ "$ubidev" ] && [ "$( nand_find_volume $ubidev data )" ]; then
++		ubidetach -m "$mtdnum"
++		ubiformat /dev/mtd$mtdnum -y
++		ubiattach -m "$mtdnum"
++		ubidev="$( nand_find_ubi "$CI_UBIPART" )"
++	fi
++	if [ ! "$ubidev" ]; then
++		ubiattach -m "$mtdnum"
++		ubidev="$( nand_find_ubi "$CI_UBIPART" )"
++		if [ ! "$ubidev" ]; then
++			ubiformat /dev/mtd$mtdnum -y
++			ubiattach -m "$mtdnum"
++			ubidev="$( nand_find_ubi "$CI_UBIPART" )"
++
++			if [ ! "$ubidev" ]; then
++				echo "cannot attach ubi mtd partition ubi"
++				return 1
++			fi
++		fi
++	fi
++
++	local kern_mtdnum="$( find_mtd_index "ubi_kernel" )"
++	if [ ! "$kern_mtdnum" ]; then
++		echo "cannot find ubi_kernel mtd partition ubi_kernel"
++		return 1
++	fi
++	local kern_ubidev="$( nand_find_ubi "ubi_kernel" )"
++	if [ ! "$kern_ubidev" ]; then
++		ubiattach -m "$kern_mtdnum"
++		kern_ubidev="$( nand_find_ubi "ubi_kernel" )"
++		if [ ! "$kern_ubidev" ]; then
++			ubiformat /dev/mtd$kern_mtdnum -y
++			ubiattach -m "$kern_mtdnum"
++			kern_ubidev="$( nand_find_ubi "ubi_kernel" )"
++			if [ ! "$kern_ubidev" ]; then
++				echo "cannot attach ubi_kernel mtd partition ubi_kernel"
++				return 1
++			fi
++		fi
++	fi
++
++	local kern_ubivol="$( nand_find_volume $kern_ubidev "kernel" )"
++	local root_ubivol="$( nand_find_volume $ubidev "rootfs" )"
++	local data_ubivol="$( nand_find_volume $ubidev rootfs_data )"
++
++	[ "$kern_ubivol" ] && { nand_remove_ubiblock $kern_ubivol || return 1; }
++	[ "$root_ubivol" ] && { nand_remove_ubiblock $root_ubivol || return 1; }
++	[ "$data_ubivol" ] && { nand_remove_ubiblock $data_ubivol || return 1; }
++
++	[ "$data_ubivol" ] && ubirmvol /dev/$ubidev -N rootfs_data || :
++	[ "$root_ubivol" ] && ubirmvol /dev/$ubidev -N "rootfs" || :
++	ubirmvol /dev/$kern_ubidev -N rootfs_data 2>/dev/null || :
++	ubirmvol /dev/$kern_ubidev -N rootfs 2>/dev/null || :
++	[ "$kern_ubivol" ] && ubirmvol /dev/$kern_ubidev -N "kernel" || :
++
++	# create kernel vol in ubi_kernel
++	if ! ubimkvol /dev/$kern_ubidev -N "kernel" -s $kernel_length; then
++		echo "cannot create kernel volume"
++		return 1
++	fi
++
++	# create rootfs vol in ubi
++	local rootfs_size_param
++	if [ "$rootfs_type" = "ubifs" ]; then
++		rootfs_size_param="-m"
++	else
++		rootfs_size_param="-s $rootfs_length"
++	fi
++	if ! ubimkvol /dev/$ubidev -N "rootfs" $rootfs_size_param; then
++		echo "cannot create rootfs volume"
++		return 1;
++	fi
++
++	# create rootfs_data vol for non-ubifs rootfs in ubi
++	if [ "$rootfs_type" != "ubifs" ]; then
++		local rootfs_data_size_param="-m"
++		if ! ubimkvol /dev/$ubidev -N rootfs_data $rootfs_data_size_param; then
++			if ! ubimkvol /dev/$ubidev -N rootfs_data -m; then
++				echo "cannot initialize rootfs_data volume"
++				return 1
++			fi
++		fi
++	fi
++
++	root_ubivol="$( nand_find_volume $ubidev "rootfs" )"
++	if [ "$root_ubivol" ]; then
++		tar xf "$tar_file" "$board_dir/root" -O | \
++			ubiupdatevol /dev/$root_ubivol -s $rootfs_length -
++	fi
++
++	kern_ubivol="$( nand_find_volume $kern_ubidev "kernel" )"
++	if [ "$kern_ubivol" ]; then
++		tar xf "$tar_file" "$board_dir/kernel" -O | \
++			ubiupdatevol /dev/$kern_ubivol -s $kernel_length -
++	fi
++
++	nand_do_upgrade_success
++}
++
+ platform_do_upgrade() {
+ 	local board=$(board_name)
+ 
+@@ -21,6 +145,9 @@ platform_do_upgrade() {
+ 			;;
+ 		esac
+ 		;;
++	xiaomi,redmi-router-ax6000)
++		redmi_ax6000_nand_upgrade_tar "$1"
++		;;
+ 	*)
+ 		nand_do_upgrade "$1"
+ 		;;
+diff --git a/target/linux/mediatek/image/filogic.mk b/target/linux/mediatek/image/filogic.mk
+index 9143f482bd..b3cffd67ba 100644
+--- a/target/linux/mediatek/image/filogic.mk
++++ b/target/linux/mediatek/image/filogic.mk
+@@ -149,7 +149,6 @@ define Device/xiaomi_redmi-router-ax6000
+   UBINIZE_OPTS := -E 5
+   BLOCKSIZE := 128k
+   PAGESIZE := 2048
+-  KERNEL_IN_UBI := 1
+   KERNEL_INITRAMFS := kernel-bin | lzma | \
+ 	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd | \
+ 	gen-ubi-initramfs $(KDIR)/tmp/$$(KERNEL_INITRAMFS_PREFIX)-factory.ubi
+-- 
+2.17.1
+
