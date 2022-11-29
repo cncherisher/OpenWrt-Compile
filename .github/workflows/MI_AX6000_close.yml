@@ -8,7 +8,7 @@
 # Description: Build OpenWrt using GitHub Actions
 #
 
-name: Build Redmi AX6000 Immortalwrt
+name: Build Redmi AX6000 Close Source Firmware
 
 on:
   repository_dispatch:
@@ -17,8 +17,8 @@ on:
     - cron: 0 12 */7 * *
 
 env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt.git
-  REPO_BRANCH: master
+  REPO_URL: https://github.com/padavanonly/immortalwrtARM.git
+  REPO_BRANCH: mt7986
   FEEDS_CONF: feeds/ax6000_imm_feeds.conf.default
   CONFIG_FILE: config/mi_ax6000_imm.config
   DIY_P1_SH: diy-part1.sh
@@ -54,12 +54,6 @@ jobs:
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
-
-    - name: Apply patches
-      run: |
-        mv patches/add-redmi-ax6000-support.patch openwrt
-        cd openwrt
-        git apply "add-redmi-ax6000-support.patch"
 
     - name: Load custom feeds
       run: |
