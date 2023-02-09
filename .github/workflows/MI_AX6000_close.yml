@@ -17,8 +17,8 @@ on:
     - cron: 0 12 */7 * *
 
 env:
-  REPO_URL: https://github.com/padavanonly/immortalwrtARM.git
-  REPO_BRANCH: mt7986
+  REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x.git
+  REPO_BRANCH: openwrt-21.02
   FEEDS_CONF: feeds/ax6000_imm_feeds.conf.default
   CONFIG_FILE: config/mi_ax6000_imm.config
   DIY_P1_SH: diy-part1.sh
